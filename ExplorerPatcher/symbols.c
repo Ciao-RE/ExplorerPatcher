@@ -1,5 +1,9 @@
 #include "symbols.h"
 
+const char* inputswitch_SN[INPUTSWITCH_SB_CNT] = {
+    INPUTSWITCH_SB_0
+};
+
 const char* twinui_pcshell_SN[TWINUI_PCSHELL_SB_CNT] = {
     TWINUI_PCSHELL_SB_0,
     TWINUI_PCSHELL_SB_1,
@@ -535,6 +539,122 @@ DWORD DownloadSymbols(DownloadSymbolsParams* params)
             sizeof(DWORD)
         );
         if (hKey) RegCloseKey(hKey);
+
+        char inputswitch_sb_dll[MAX_PATH];
+        ZeroMemory(
+            inputswitch_sb_dll,
+            (MAX_PATH) * sizeof(char)
+        );
+        GetSystemDirectoryA(
+            inputswitch_sb_dll,
+            MAX_PATH
+        );
+        strcat_s(
+            inputswitch_sb_dll,
+            MAX_PATH,
+            "\\"
+        );
+        strcat_s(
+            inputswitch_sb_dll,
+            MAX_PATH,
+            TWINUI_PCSHELL_SB_NAME
+        );
+        strcat_s(
+            inputswitch_sb_dll,
+            MAX_PATH,
+            ".dll"
+        );
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            TEXT(REGPATH) L"\\" TEXT(INPUTSWITCH_SB_NAME),
+            0,
+            NULL,
+            REG_OPTION_NON_VOLATILE,
+            KEY_WRITE,
+            NULL,
+            &hKey,
+            &dwDisposition
+        );
+        if (!hKey || hKey == INVALID_HANDLE_VALUE)
+        {
+            if (params->bVerbose)
+            {
+                FreeLibraryAndExitThread(
+                    hModule,
+                    11
+                );
+            }
+            return 11;
+        }
+        printf("[Symbols] Downloading symbols for \"%s\"...\n", inputswitch_sb_dll);
+        if (VnDownloadSymbols(
+            NULL,
+            inputswitch_sb_dll,
+            szSettingsPath,
+            MAX_PATH
+        ))
+        {
+            printf("[Symbols] Symbols for \"%s\" are not available - unable to download.\n", inputswitch_sb_dll);
+            printf("[Symbols] Please refer to \"https://github.com/valinet/ExplorerPatcher/wiki/Symbols\" for more information.\n");
+            if (params->bVerbose)
+            {
+                FreeLibraryAndExitThread(
+                    hModule,
+                    12
+                );
+            }
+            return 12;
+        }
+        printf("[Symbols] Reading symbols...\n");
+        if (VnGetSymbols(
+            szSettingsPath,
+            symbols_PTRS.inputswitch_PTRS,
+            inputswitch_SN,
+            INPUTSWITCH_SB_CNT
+        ))
+        {
+            printf("[Symbols] Failure in reading symbols for \"%s\".\n", inputswitch_sb_dll);
+            if (params->bVerbose)
+            {
+                FreeLibraryAndExitThread(
+                    hModule,
+                    13
+                );
+            }
+            return 13;
+        }
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            TEXT(REGPATH_STARTMENU) L"\\" TEXT(INPUTSWITCH_SB_NAME),
+            0,
+            NULL,
+            REG_OPTION_NON_VOLATILE,
+            KEY_WRITE,
+            NULL,
+            &hKey,
+            &dwDisposition
+        );
+        if (!hKey || hKey == INVALID_HANDLE_VALUE)
+        {
+            if (params->bVerbose)
+            {
+                FreeLibraryAndExitThread(
+                    hModule,
+                    8
+                );
+            }
+            return 8;
+        }
+        RegSetValueExW(
+            hKey,
+            TEXT(INPUTSWITCH_SB_0),
+            0,
+            REG_DWORD,
+            &(symbols_PTRS.inputswitch_PTRS[0]),
+            sizeof(DWORD)
+        );
+        if (hKey) RegCloseKey(hKey);
+
     }
 
 
@@ -770,6 +890,7 @@ BOOL LoadSymbols(symbols_addr* symbols_PTRS, HMODULE hModule)
 
     BOOL bIsStartHardcoded = FALSE;
     BOOL bIsTwinuiPcshellHardcoded = FALSE;
+    BOOL bIsInputSwitchHardcoded = FALSE;
     CHAR hash[100];
     ZeroMemory(hash, 100 * sizeof(CHAR));
     TCHAR wszPath[MAX_PATH];
@@ -897,6 +1018,19 @@ BOOL LoadSymbols(symbols_addr* symbols_PTRS, HMODULE hModule)
     if (bIsTwinuiPcshellHardcoded)
     {
         printf("[Symbols] Identified known \"" TWINUI_PCSHELL_SB_NAME ".dll\" with hash %s.\n", hash);
+    }
+
+    GetSystemDirectoryW(wszPath, MAX_PATH);
+    wcscat_s(wszPath, MAX_PATH, L"\\" TEXT(INPUTSWITCH_SB_NAME) L".dll");
+    ComputeFileHash(wszPath, hash, 100);
+    if (!_stricmp(hash, "3c2b561ce6ac4d85d1b92e9ec8d85db1")) // 370
+    {
+        symbols_PTRS->inputswitch_PTRS[0] = 0x4ca74;
+        bIsInputSwitchHardcoded = TRUE;
+    }
+    if (bIsInputSwitchHardcoded)
+    {
+        printf("[Symbols] Identified known \"" INPUTSWITCH_SB_NAME ".dll\" with hash %s.\n", hash);
     }
 
     GetWindowsDirectoryW(wszPath, MAX_PATH);
@@ -1049,6 +1183,39 @@ BOOL LoadSymbols(symbols_addr* symbols_PTRS, HMODULE hModule)
             RegCloseKey(hKey);
         }
     }
+    
+    if (!bIsInputSwitchHardcoded)
+    {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            TEXT(REGPATH) L"\\" TEXT(INPUTSWITCH_SB_NAME),
+            0,
+            NULL,
+            REG_OPTION_NON_VOLATILE,
+            KEY_READ,
+            NULL,
+            &hKey,
+            &dwDisposition
+        );
+        if (!hKey || hKey == INVALID_HANDLE_VALUE)
+        {
+            FreeLibraryAndExitThread(
+                hModule,
+                1
+            );
+            return 1;
+        }
+        RegQueryValueExW(
+            hKey,
+            TEXT(INPUTSWITCH_SB_0),
+            0,
+            NULL,
+            &(symbols_PTRS->inputswitch_PTRS[0]),
+            &dwSize
+            );
+            if (hKey) RegCloseKey(hKey);
+    }
+
     if (!bIsTwinuiPcshellHardcoded || !bIsStartHardcoded)
     {
         RegCreateKeyExW(
@@ -1271,7 +1438,7 @@ BOOL LoadSymbols(symbols_addr* symbols_PTRS, HMODULE hModule)
         &dwSize
     );
     RegCloseKey(hKey);
-    if (!bNeedToDownload && (!bIsTwinuiPcshellHardcoded || !bIsStartHardcoded))
+    if (!bNeedToDownload && (!bIsTwinuiPcshellHardcoded || !bIsStartHardcoded || !bIsInputSwitchHardcoded))
     {
         bNeedToDownload = wcscmp(szReportedVersion, szStoredVersion);
     }

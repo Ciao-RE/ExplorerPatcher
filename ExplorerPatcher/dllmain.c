@@ -9841,6 +9841,14 @@ BOOL PeopleBand_IsOS(DWORD dwOS)
     return IsOS(dwOS);
 }
 
+static INT64(*GetContextMenuResourceIdFunc)(__int16, struct _GUID*, int*, bool*) = NULL;
+static INT64 GetContextMenuResourceIdHook(__int16 a, struct _GUID* b, int* c, bool* d) {
+    INT64 res = GetContextMenuResourceIdFunc(a, b, c, d);
+    *d = false;
+    return res;
+}
+
+
 BOOL explorer_IsOS(DWORD dwOS)
 {
     if (dwOS == OS_ANYSERVER)
@@ -10421,6 +10429,22 @@ DWORD Inject(BOOL bIsExplorer)
     //VnPatchIAT(hTwinuiPcshell, "api-ms-win-core-debug-l1-1-0.dll", "IsDebuggerPresent", IsDebuggerPresentHook);
     printf("Setup twinui.pcshell functions done\n");
 
+	HANDLE hInputSwitch = LoadLibraryW(L"InputSwitch.dll");
+    if (symbols_PTRS.inputswitch_PTRS[0] && symbols_PTRS.inputswitch_PTRS[0] != 0xFFFFFFFF)
+    {
+        GetContextMenuResourceIdFunc = (INT64(*)(void*))((uintptr_t)hInputSwitch + symbols_PTRS.inputswitch_PTRS[0]);
+        rv = funchook_prepare(
+            funchook,
+            (void**)&GetContextMenuResourceIdFunc,
+            GetContextMenuResourceIdHook
+            );
+        if (rv != 0)
+        {
+            FreeLibraryAndExitThread(hModule, rv);
+            return rv;
+            }
+	}
+	printf("Setup InputSwitch functions done\n");
 
     if (IsWindows11Version22H2OrHigher())
     {
